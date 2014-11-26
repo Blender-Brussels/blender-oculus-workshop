@@ -7,13 +7,10 @@ from bge import logic
 from time import sleep
 from mathutils import *
 
-server = OSCServer( ("localhost", 7120) )
-server.timeout = 0
-run = True
+# need a global reference for the callback
+# it is initialized in the init
+joueur=None
 
-mycont=logic.getCurrentController()
-joueur=mycont.owner
-eu = Euler((0, 0, 0), 'XYZ')
 
 # this method of reporting timeouts only works by convention
 # that before calling handle_request() field .timed_out is 
@@ -23,53 +20,36 @@ def handle_timeout(self):
 
 # funny python's way to add a method to an instance of a class
 import types
-server.handle_timeout = types.MethodType(handle_timeout, server)
+
 
 def user_callback(path, tags, args, source):
-    # which user will be determined by path:
-    # we just throw away all slashes and join together what's left
-    user = ''.join(path.split("/"))
-    # tags will contain 'fff'
-    # args is a OSCMessage with data
-    # source is where the message came from (in case you need to reply)
-    #print ("Now do something with", user, args[0], args[1], args[2], args[3]) 
-    bge.logic.rotation = Quaternion((   -args[1], args[2], args[0], args[3] ))
-    
+
     # OpenHMD send quaternion data in the format Y-WXZ, blender needs WXYZ
     # angle seesm inverted too... 
-#    try:
-#        eu = bge.logic.rotation.to_euler()
-#    except AttributeError:
-#        eu = Euler((0, 0, 0), 'XYZ')
-    #rot = Euler((-eu.z, eu.y, -eu.x), 'XYZ')
-#    rot = Euler((-eu.z, eu.y, -eu.x), 'XYZ')
-#    fix = Euler((0, 0, 0), 'XYZ')
-    #fix = Euler((-1.5707963705062866, 0, 0), 'XYZ')
-#    rot.rotate(fix)
-    joueur.localOrientation = bge.logic.rotation
+
+    #print ("Now do something with", user, args[0], args[1], args[2], args[3]) 
+    joueur.localOrientation = Quaternion(( -args[1], args[2], args[0], args[3] ))
     
 
-#def quit_callback(path, tags, args, source):
-#    # don't do this at home (or it'll quit blender)
-#    global run
-#    run = False
-#    server.close()
 
-server.addMsgHandler( "/user/1", user_callback )
 
-#server.addMsgHandler( "/quit", quit_callback )
-
+def init(cont):
+    global joueur
+    joueur = cont.owner
+    server = OSCServer(("localhost", 7120))
+    server.timeout = 0
+    server.handle_timeout = types.MethodType(handle_timeout, server)
+    server.addMsgHandler( "/user/1", user_callback )
+    # keep a reference in the object dictionary: it will be automatically deleted on game exit
+    joueur.attrDict["server"] = server
+    
+    
 # user script that's called by the game engine every frame
-def each_frame():
+def each_frame(cont):
     # clear timed_out flag
+    server = cont.owner.attrDict["server"]
     server.timed_out = False
     # handle all pending requests then return
     while not server.timed_out:
         server.handle_request()
-
-
-# simulate a "game engine"
-
-def quit():
-    server.close()
 
